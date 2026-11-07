@@ -36,6 +36,7 @@ PADRAO = {
     "intervalo_cam": 3,
     "mostrar_avisos": True,
     "cameras": None,        # null = todas
+    "ja_abriu": False,      # primeira abertura mostra a aba Ajuda
 }
 
 
@@ -363,7 +364,12 @@ class MeetGuard:
         }
         self.janela = Janela(self)
         if mostrar_janela:
-            self.janela.mostrar()
+            primeira = not CFG.get("ja_abriu")
+            if primeira:
+                CFG["ja_abriu"] = True
+                salvar_config(CFG)
+            # mostra depois que a janela termina de montar (evita abrir escondida)
+            self.janela.root.after(500, lambda: self.janela.mostrar("Ajuda" if primeira else None))
 
     # ---------- infraestrutura ----------
     @staticmethod
@@ -580,8 +586,8 @@ class Janela:
         self.root = root = ctk.CTk()
         root.withdraw()
         root.title(marca.PRODUTO)
-        root.geometry("560x640")
-        root.minsize(520, 600)
+        root.geometry("560x720")
+        root.minsize(520, 680)
         root.protocol("WM_DELETE_WINDOW", self.esconder)
         ico = recurso("app.ico")
         if ico:
@@ -630,12 +636,13 @@ class Janela:
             segmented_button_unselected_hover_color=_misturar(COR, (255, 255, 255), 0.3),
             segmented_button_fg_color=_misturar(COR, (255, 255, 255), 0.45), text_color="white")
         self.abas.pack(fill="both", expand=True, padx=16, pady=(10, 0))
-        for nome in ("Controles", "Câmeras", "Opções", "Sobre"):
+        for nome in ("Controles", "Câmeras", "Opções", "Ajuda", "Sobre"):
             self.abas.add(nome)
         self.abas._segmented_button.configure(font=self.F(13, "bold"))
         self._aba_controles(self.abas.tab("Controles"))
         self._aba_cameras(self.abas.tab("Câmeras"))
         self._aba_opcoes(self.abas.tab("Opções"))
+        self._aba_ajuda(self.abas.tab("Ajuda"))
         self._aba_sobre(self.abas.tab("Sobre"))
 
     def _montar_rodape(self):
@@ -691,8 +698,13 @@ class Janela:
             w["gravar"].pack(side="right", padx=8, pady=6)
             self.mostrar_estado(q)
 
-        ctk.CTkLabel(aba, text="Dica: clique no ícone perto do relógio para ligar ou desligar.",
-                     font=self.F(12), text_color="#6B7380").pack(pady=(6, 0))
+        dica = ctk.CTkFrame(aba, fg_color="transparent")
+        dica.pack(pady=(6, 0))
+        ctk.CTkLabel(dica, text="Não vê os ícones perto do relógio?", font=self.F(12),
+                     text_color="#6B7380").pack(side="left")
+        ctk.CTkButton(dica, text="Veja como deixá-los à mostra", width=10, height=24, font=self.F(12, "bold"),
+                      fg_color="transparent", hover_color="#E3E7EE", text_color=COR,
+                      command=lambda: self.abas.set("Ajuda")).pack(side="left", padx=(4, 0))
 
     def mostrar_estado(self, q):
         e = self.app.estado[q]
@@ -821,6 +833,55 @@ class Janela:
         self.app.bg(lambda: (lambda ok: self.app.na_janela(lambda: self.var_inicio.set(ok)))(
             inicializacao_ativa()))
 
+    # ---------- aba Ajuda ----------
+    def _aba_ajuda(self, aba):
+        ctk = self.ctk
+        win11 = getattr(sys, "getwindowsversion", lambda: None)()
+        win11 = bool(win11 and win11.build >= 22000)
+        c = self._cartao(aba)
+        ctk.CTkLabel(c, text="Deixe os ícones sempre à mostra", font=self.F(15, "bold"),
+                     text_color="#1E2530").pack(anchor="w", padx=16, pady=(14, 0))
+        ctk.CTkLabel(c, text="O Windows costuma esconder ícones novos na setinha  ^  ao lado do relógio.",
+                     font=self.F(12), text_color="#6B7380").pack(anchor="w", padx=16)
+        if win11:
+            passos = ["Clique no botão abaixo para abrir as configurações da barra de tarefas.",
+                      "Abra a seção \"Outros ícones da bandeja do sistema\".",
+                      f"Ative as opções do {marca.PRODUTO} (microfone e câmera)."]
+        else:
+            passos = ["Clique no botão abaixo para abrir as configurações da barra de tarefas.",
+                      "Em \"Área de notificação\", clique em \"Selecionar quais ícones aparecem na "
+                      "barra de tarefas\".",
+                      f"Ative as opções do {marca.PRODUTO} (microfone e câmera)."]
+        for i, passo in enumerate(passos, 1):
+            linha = ctk.CTkFrame(c, fg_color="transparent")
+            linha.pack(fill="x", padx=16, pady=(8 if i == 1 else 4, 0))
+            ctk.CTkLabel(linha, text=str(i), width=24, height=24, corner_radius=12, fg_color=COR,
+                         text_color="white", font=self.F(12, "bold")).pack(side="left", anchor="n")
+            ctk.CTkLabel(linha, text=passo, font=self.F(13), text_color="#1E2530", justify="left",
+                         wraplength=400, anchor="w").pack(side="left", padx=(10, 0), fill="x")
+        self._botao(c, "Abrir configurações da barra de tarefas", self._abrir_config_barra,
+                    largura=300).pack(anchor="w", padx=16, pady=(12, 6))
+        ctk.CTkLabel(c, text="Atalho: você também pode arrastar os ícones da setinha  ^  para a barra de tarefas.",
+                     font=self.F(12), text_color="#6B7380", wraplength=460, justify="left").pack(
+            anchor="w", padx=16, pady=(0, 14))
+
+        c2 = self._cartao(aba)
+        ctk.CTkLabel(c2, text="Como usar", font=self.F(15, "bold"), text_color="#1E2530").pack(
+            anchor="w", padx=16, pady=(14, 4))
+        for txt in ("Clique no ícone perto do relógio para ligar ou desligar.",
+                    "Clique com o botão direito no ícone para abrir esta janela ou sair.",
+                    "Use os atalhos de teclado da aba Controles em qualquer programa.",
+                    "Verde = ligado · Vermelho = desligado · Cinza = não encontrado."):
+            ctk.CTkLabel(c2, text="•  " + txt, font=self.F(13), text_color="#1E2530", anchor="w",
+                         justify="left", wraplength=460).pack(anchor="w", padx=16, pady=1)
+        ctk.CTkLabel(c2, text="", height=6).pack()
+
+    def _abrir_config_barra(self):
+        try:
+            os.startfile("ms-settings:taskbar")
+        except Exception as e:
+            log(f"erro ao abrir configurações da barra: {e!r}")
+
     # ---------- aba Sobre ----------
     def _aba_sobre(self, aba):
         ctk = self.ctk
@@ -851,13 +912,20 @@ class Janela:
             log(f"erro na janela: {e!r}")
         self.root.after(100, self._processar_fila)
 
-    def mostrar(self):
+    def mostrar(self, aba=None, tentativa=1):
         self._ler_inicio()
+        if aba:
+            self.abas.set(aba)
         self.root.deiconify()
+        self.root.state("normal")
         self.root.lift()
         self.root.attributes("-topmost", True)
         self.root.after(300, lambda: self.root.attributes("-topmost", False))
         self.root.focus_force()
+        # confere se a janela realmente apareceu; se não, tenta de novo
+        if tentativa < 3:
+            self.root.after(700, lambda: None if self.root.state() == "normal"
+                            else self.mostrar(aba, tentativa + 1))
 
     def esconder(self):
         self.root.withdraw()
