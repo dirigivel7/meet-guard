@@ -62,7 +62,7 @@ Filename: "{sys}\schtasks.exe"; Parameters: "/delete /tn ""MicCam"" /f"; Flags: 
 Filename: "{app}\{#Exe}.exe"; Parameters: "--configurar-inicializacao sim"; Flags: runhidden waituntilterminated; Tasks: iniciar; StatusMsg: "Configurando a inicialização..."
 Filename: "{app}\{#Exe}.exe"; Parameters: "--configurar-inicializacao nao"; Flags: runhidden waituntilterminated; Tasks: not iniciar
 ; abrir ao terminar
-Filename: "{app}\{#Exe}.exe"; Description: "Abrir o {#Produto} agora"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#Exe}.exe"; Description: "Abrir o {#Produto} agora"; Flags: nowait postinstall skipifsilent runascurrentuser
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/im {#Exe}.exe /f"; Flags: runhidden; RunOnceId: "Fechar"
