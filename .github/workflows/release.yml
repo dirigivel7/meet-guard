@@ -1,0 +1,107 @@
+# Gera o instalador do Meet Guard num Windows do GitHub.
+# - Em todo push/PR: gera e guarda o instalador como "artefato" do workflow.
+# - Ao criar uma tag v* (ex.: v1.0.0): publica o instalador em Releases.
+# - A assinatura (SignPath) só roda quando as variáveis SIGNPATH_* estiverem configuradas.
+name: Instalador
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  ASSINAR: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar bibliotecas
+        run: python -m pip install -r requirements.txt
+
+      - name: Gerar marca (ícone e imagens)
+        run: python gerar_marca.py
+
+      - name: Gerar programa
+        shell: cmd
+        run: >
+          python -m PyInstaller --noconfirm --clean --log-level WARN
+          --onedir --noconsole --uac-admin --name MeetGuard
+          --icon "build\recursos\app.ico" --version-file "build\versao.txt"
+          --add-data "build\recursos;recursos" --collect-all customtkinter
+          --hidden-import pystray._win32 meetguard.py
+
+      # ---------- assinatura do programa ----------
+      - name: Enviar programa para assinatura
+        if: env.ASSINAR == 'true'
+        id: programa
+        uses: actions/upload-artifact@v4
+        with:
+          name: programa-sem-assinatura
+          path: dist/MeetGuard
+
+      - name: Assinar programa (SignPath)
+        if: env.ASSINAR == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: programa
+          github-artifact-id: ${{ steps.programa.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: dist/MeetGuard
+
+      # ---------- instalador ----------
+      - name: Instalar Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Montar instalador
+        shell: cmd
+        run: '"%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" /Qp MeetGuard.iss'
+
+      - name: Enviar instalador para assinatura
+        if: env.ASSINAR == 'true'
+        id: instalador
+        uses: actions/upload-artifact@v4
+        with:
+          name: instalador-sem-assinatura
+          path: instalador/*.exe
+
+      - name: Assinar instalador (SignPath)
+        if: env.ASSINAR == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: instalador
+          github-artifact-id: ${{ steps.instalador.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: instalador
+
+      - name: Guardar instalador
+        uses: actions/upload-artifact@v4
+        with:
+          name: instalador
+          path: instalador/*.exe
+
+      - name: Publicar em Releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: instalador/*.exe
+          generate_release_notes: true
